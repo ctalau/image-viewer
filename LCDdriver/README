@@ -1,0 +1,9 @@
+
+Driver pentru LCD
+
+
+* Foloseste protocolul SPI (implementat 'de mana')
+
+* lcd.c 	-- driverul propriuzis
+* font.h	-- un font stocat in program memory
+* splash 	-- un exemplu de imagine

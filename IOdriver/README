@@ -1,0 +1,4 @@
+Fisiere
+
+button.c/h	- driver pentru lucrul cu butoanele (momentan foloseste busy waiting pentru a astepta apasarea unui buton)
+uart.c/h	- driver pentru interfata seriala ( folosit la debug)

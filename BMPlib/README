@@ -1,0 +1,4 @@
+Fisiere
+
+* create_bmp.c	- utilitar pentru creerea unei imagini bmp albe de dimensiunea LCD-ului
+* draw_bmp.c.h	- parseaza formatul de BMP si afisaza imaginea pe LCD

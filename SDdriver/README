@@ -1,0 +1,6 @@
+
+Driver de MMC/SD card
+
+
+* mmc.c 	-- foloseste SPI pentru comunicatia cu card-ul. Activeaza SPI doar cand transmite date efectiv.
+

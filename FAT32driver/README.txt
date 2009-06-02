@@ -2,24 +2,23 @@
 Driver pentru sistem de fisiere FAT32
 
 
-== LOW RESOURCES ==
-Driverul este intentionat pentru ATMEGA16 si ocupa 512+ bytes  de memorie (un singur buffer de 512).
-Sistemul de fisiere e read_only, nu suporta nume lungi , etc.
+== Functionalitate ==
+Driverul este intentionat pentru ATMEGA16 si ocupa 512+ bytes  de memorie.
+Are un sistem de cahce-ing pentru a nu citi un sector de mai multe ori la rand.
+Sistemul de fisiere e read_only, nu suporta nume lungi , directoare multi-cluster.
 
 
 == GENERIC ==
-Se bazeaza pe o functie de citire definita in hw.h ( si implementata temporar in hw.c).
-
+Se bazeaza pe o functie de citire definita in hw.h
 
 == FILES ==
-hw.c / hw.h   -- exemplu de implementare a driverului hw
+hw.c / hw.h   	-- interfata cu driverul de storage
 partitions.c/.h -- parseaza MBR
-utils.c/.h	-- functii de debugging / checking
-fat.c/fat.h	-- foloseste functiile
+volid.c/h		-- identifica parametrii sistemului de fisiere
+file.c/dir.c	-- pun la dispozitie un API asemanator celui din linux.
+utils.c/.h		-- functii de debugging / checking
+fat.c/fat.h		-- suportul epentru fisiere multi-cluster folosind tabela FAT.
 
-
-LBA - bucati de 512 octeti
--D_LOW_MEM_ pentru a ocupa mai putina memorie
 
 
 
