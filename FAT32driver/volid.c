@@ -12,11 +12,11 @@ uint8_t  sectors_per_cluster;
 uint32_t root_dir_first_cluster;
 
 
-#ifdef TESTING
+#ifndef _LOW_MEM_
 
 #define ALIIGNED_SIZE 32
-void print_alligned(const char * str1, int nmbr){
-	int i;
+static void print_alligned(const char * str1, int nmbr){
+	uint8_t i;
 	printf("\t%s",str1);
 	for(i=0; i < ALIIGNED_SIZE - strlen(str1); i++){
 		printf(".");
@@ -28,6 +28,7 @@ void print_volid( void * read_buffer){
 	struct volid * vol;
 	hw_read(read_buffer, partition_lba_start);
 	vol = read_buffer;
+
 
 	print_alligned("Bytes per sector:", vol->bytes_per_sect);
 	print_alligned("Sectors per cluster:",vol->sectors_per_cluster);
@@ -46,7 +47,12 @@ void print_volid( void * read_buffer){
 
 	return;
 }
+#else
+
+void print_volid( void * read_buffer){
+}
 #endif
+
 
 // Afla parametrii sistemului de fisiere
 // @pre: trebuie apelata functia init_partitions

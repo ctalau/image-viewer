@@ -51,6 +51,7 @@ void __read_f( void * buf, uint32_t size, void * read_buffer){
 void read_f( void * buf, uint32_t size, void * read_buffer){
 	int32_t remain = SECTOR_SIZE - (the_file.offset % SECTOR_SIZE);
 	uint8_t * dst = buf;
+
 	if(remain < size){
 		__read_f( dst, remain, read_buffer);
 		size -=remain;

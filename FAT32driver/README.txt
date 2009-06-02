@@ -16,3 +16,14 @@ hw.c / hw.h   -- exemplu de implementare a driverului hw
 partitions.c/.h -- parseaza MBR
 utils.c/.h	-- functii de debugging / checking
 fat.c/fat.h	-- foloseste functiile
+
+
+LBA - bucati de 512 octeti
+-D_LOW_MEM_ pentru a ocupa mai putina memorie
+
+
+
+
+
+
+

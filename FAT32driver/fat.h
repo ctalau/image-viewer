@@ -19,5 +19,6 @@ extern lba_t cached_sector;
 
 void  advance_pointer(struct file_pointer * dir, uint32_t amount, void * read_buffer);
 
+void printdirs(struct DIR * dir);
 
 #endif

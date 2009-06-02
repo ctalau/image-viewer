@@ -6,7 +6,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 void hw_read(void * buf, lba_t lba){
-	int disk = open("/dev/hdb", O_RDONLY);
+	int disk = open("/home/so/PM/mnt/sd.img", O_RDONLY);
 	int bytes_read = 0;
 	int bytes_read_lt = 0;
 
@@ -23,7 +23,8 @@ void hw_read(void * buf, lba_t lba){
 
 }
 #else
+#include "mmc.h"
 void hw_read(void * buf, lba_t lba){
-		
+		MMC_read(SECTOR_SIZE * lba, (char *) buf);
 }
 #endif

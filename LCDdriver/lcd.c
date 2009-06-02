@@ -1,212 +1,171 @@
-//********************************************************
-//**** Functions for Interfacing NOKIA 3310 Display *****
-//********************************************************
-//Controller:	ATmega32 (Clock: 1 Mhz-internal)
-//Compiler:		ImageCraft ICCAVR
-//Author:		CC Dharmani, Chennai (India)
-//Date:			Sep 2008
-//********************************************************
-
-//#include <avr/macros.h>
+#include <stdio.h>
 #include <avr/io.h>
+#include <avr/pgmspace.h>
+#include <avr/interrupt.h>
 
+#define F_CPU 16000000
+#include <util/delay.h>
+#include "font.h"
 #include "lcd.h"
 
-//global variable for remembering where to start writing the next text string on 3310 LCD
-unsigned char char_start;
 
-/*--------------------------------------------------------------------------------------------------
-  Name         :  spi_init
-  Description  :  Initialising atmega SPI for using with 3310 LCD
-  Argument(s)  :  None.
-  Return value :  None.
---------------------------------------------------------------------------------------------------*/
-//SPI initialize
-//clock rate: 250000hz
-void spi_init(void)
+#ifdef _TEST_LCD_
+#include "splash.h"
+#endif
+
+
+
+/* Function prototypes */
+static void LCD_send(unsigned char data, LcdCmdData cd);
+
+
+/* Performs IO & LCD controller initialization */
+void LCD_init(void)
 {
- SPCR = 0x58; //setup SPI
-}
+    // Pull-up on reset pin
+    LCD_PORT |= LCD_RST_PIN;
 
-/*--------------------------------------------------------------------------------------------------
-  Name         :  LCD_init
-  Description  :  LCD controller initialization.
-  Argument(s)  :  None.
-  Return value :  None.
---------------------------------------------------------------------------------------------------*/
-void LCD_init ( void )
-{
-	delay_ms(100);
+	// Set output bits on lcd port
+	LCD_DDR |= LCD_RST_PIN | LCD_CE_PIN | LCD_DC_PIN | LCD_DATA_PIN | LCD_CLK_PIN;
 
-	CLEAR_SCE_PIN;    //Enable LCD
+	// Wait after VCC high for reset (max 30ms)
+    _delay_ms(15);
 
-	CLEAR_RST_PIN;	//reset LCD
-    delay_ms(100);
-    SET_RST_PIN;
+    // Toggle display reset pin
+    LCD_PORT &= ~LCD_RST_PIN;
+    lcd_delay();
+    LCD_PORT |= LCD_RST_PIN;
 
-	SET_SCE_PIN;	//disable LCD
+    // Disable LCD controller
+    LCD_PORT |= LCD_CE_PIN;
 
-    LCD_writeCommand( 0x21 );  // LCD Extended Commands.
-    LCD_writeCommand( 0xE0 );  // Set LCD Vop (Contrast).
-    LCD_writeCommand( 0x04 );  // Set Temp coefficent.
-    LCD_writeCommand( 0x13 );  // LCD bias mode 1:48.
-    LCD_writeCommand( 0x20 );  // LCD Standard Commands, Horizontal addressing mode.
-    LCD_writeCommand( 0x0c );  // LCD in normal mode.
+    LCD_send(0x21, LCD_CMD);  // LCD Extended Commands
+    LCD_send(0xC8, LCD_CMD);  // Set LCD Vop(Contrast)
+    LCD_send(0x06, LCD_CMD);  // Set Temp coefficent
+    LCD_send(0x13, LCD_CMD);  // LCD bias mode 1:48
+    LCD_send(0x20, LCD_CMD);  // Standard Commands, Horizontal addressing
+    LCD_send(0x0C, LCD_CMD);  // LCD in normal mode
 
+    // Clear lcd
     LCD_clear();
 }
 
-/*--------------------------------------------------------------------------------------------------
-  Name         :  LCD_writeCommand
-  Description  :  Sends command to display controller.
-  Argument(s)  :  command -> command to be sent
-  Return value :  None.
---------------------------------------------------------------------------------------------------*/
-void LCD_writeCommand ( unsigned char command )
-{
-    CLEAR_SCE_PIN;	  //enable LCD
-
-	CLEAR_DC_PIN;	  //set LCD in command mode
-
-    //  Send data to display controller.
-    SPDR = command;
-
-    //  Wait until Tx register empty.
-    while ( !(SPSR & 0x80) );
-
-    SET_SCE_PIN;   	 //disable LCD
+/**
+  * Sterge ecranul
+  */
+void LCD_clear(void){
+	LCD_gotoXY(0,0);
+    for(int i=0;i<LCD_CACHE_SIZE;i++) {
+		LCD_send(0x00, LCD_DATA);
+    }
 }
 
-/*--------------------------------------------------------------------------------------------------
-  Name         :  LCD_writeData
-  Description  :  Sends Data to display controller.
-  Argument(s)  :  Data -> Data to be sent
-  Return value :  None.
---------------------------------------------------------------------------------------------------*/
-void LCD_writeData ( unsigned char Data )
-{
-    CLEAR_SCE_PIN;	  //enable LCD
-
-	SET_DC_PIN;	  //set LCD in Data mode
-
-    //  Send data to display controller.
-    SPDR = Data;
-
-    //  Wait until Tx register empty.
-    while ( !(SPSR & 0x80) );
-
-    SET_SCE_PIN;   	 //disable LCD
+/**
+  *	Deseneaza o imagine pe ecran
+  */
+void LCD_raw( const char * splash, uint16_t len ){
+    for(int i=0; i< len ; i++) {
+		LCD_send(splash[i], LCD_DATA);
+    }
 }
 
-/*--------------------------------------------------------------------------------------------------
-  Name         :  LCD_clear
-  Description  :  Clears the display
-  Argument(s)  :  None.
-  Return value :  None.
---------------------------------------------------------------------------------------------------*/
-void LCD_clear ( void )
-{
-    int i,j;
+/**
+  *	Afisaza un caracter
+  */
+static int LCD_chr(char chr, uint8_t sel){
+    // Caractere de 5 pixeli  + spatiu
+    for(unsigned char i=0;i<5;i++) {
+		if( sel == SELECTED)
+			LCD_send( ~(pgm_read_byte( &font5x7[chr-32][i]) << 1), LCD_DATA);
+		else
+			LCD_send(  pgm_read_byte( &font5x7[chr-32][i]) << 1, LCD_DATA);
+    }
 
-	LCD_gotoXY (0,0);  	//start with (0,0) position
-
-    for(i=0; i<8; i++)
-	  for(j=0; j<90; j++)
-	     LCD_writeData( 0x00 );
-
-    LCD_gotoXY (0,0);	//bring the XY position back to (0,0)
-
+	LCD_send((sel == SELECTED)? 0xFF:0x00, LCD_DATA);
+	return 0;
 }
 
-/*--------------------------------------------------------------------------------------------------
-  Name         :  LCD_gotoXY
-  Description  :  Sets cursor location to xy location corresponding to basic font size.
-  Argument(s)  :  x - range: 0 to 84
-  			   	  y -> range: 0 to 5
-  Return value :  None.
---------------------------------------------------------------------------------------------------*/
-void LCD_gotoXY ( unsigned char x, unsigned char y )
-{
-    LCD_writeCommand (0x80 | x);   //column
-	LCD_writeCommand (0x40 | y);   //row
+#define CHARS_PER_LINE 14
+/**
+  * Afisaza un string truchiat la CHARS_PER_LINE caractere pe o linie separata
+  */
+void LCD_str(char *str, uint8_t sel){
+	uint8_t i=0;
+
+    while(i++ < CHARS_PER_LINE && *str)
+        LCD_chr(*str++,sel);
+	for( i-- ; i < CHARS_PER_LINE; i++)
+		LCD_chr(' ',sel);
 }
 
-/*--------------------------------------------------------------------------------------------------
-  Name         :  LCD_writeChar
-  Description  :  Displays a character at current cursor location and increment cursor location.
-  Argument(s)  :  ch   -> Character to write.
-  Return value :  None.
---------------------------------------------------------------------------------------------------*/
-void LCD_writeChar (unsigned char ch)
-{
-   unsigned char j;
-
-   LCD_writeData(0x00);
-
-   for(j=0; j<5; j++)
-     LCD_writeData( smallFont [(ch-32)*5 + j] );
-
-   LCD_writeData( 0x00 );
+/**
+  *	Schimba adresa pointerului la pixelul 'addr'
+  *  x - numarul coloanei (din 84 posibile
+  *	 y - numarul linie ( din 6 posibile)
+  */
+void LCD_gotoXY(uint8_t x, uint8_t y) {
+	LCD_send(0x80 | x , LCD_CMD);
+	LCD_send(0x40 | y , LCD_CMD);
 }
 
-/*--------------------------------------------------------------------------------------------------
-  Name         :  LCD_writeString_F
-  Description  :  Displays a string stored in FLASH, in small fonts (refer to 3310_routines.h)
-  Argument(s)  :  string -> Pointer to ASCII string (stored in FLASH)
-  Return value :  None.
---------------------------------------------------------------------------------------------------*/
-void LCD_writeString_F ( const unsigned char *string )
-{
-    while ( *string )
-        LCD_writeChar( *string++ );
+/* Sends data to display controller */
+static void LCD_send(unsigned char data, LcdCmdData cd){
+    // Enable display controller (active low)
+    LCD_PORT &= ~LCD_CE_PIN;
+
+    // Either command or data
+    if(cd == LCD_DATA) {
+        LCD_PORT |= LCD_DC_PIN;
+    } else {
+        LCD_PORT &= ~LCD_DC_PIN;
+    }
+
+	for(unsigned char i=0;i<8;i++) {
+		// Set the DATA pin value
+		if((data>>(7-i)) & 0x01) {
+			LCD_PORT |= LCD_DATA_PIN;
+		} else {
+			LCD_PORT &= ~LCD_DATA_PIN;
+		}
+
+		// Toggle the clock
+		LCD_PORT |= LCD_CLK_PIN;
+		LCD_PORT &= ~LCD_CLK_PIN;
+	}
+
+	// Disable display controller
+    LCD_PORT |= LCD_CE_PIN;
 }
 
+#ifdef _TEST_LCD_
+int main(void){
+	// Setup LCD
+	LCD_init();
+	LCD_contrast(0x40);
 
-/*--------------------------------------------------------------------------------------------------
-  Name         :  delay_ms
-  Description  :  1 millisec delay (appx.)
-  Argument(s)  :  None.
-  Return value :  None.
---------------------------------------------------------------------------------------------------*/
-void delay_ms(int miliSec)  //for 1Mhz clock
-{
-  int i,j;
-  for(i=0;i<miliSec;i++)
-    for(j=0;j<100;j++)
-	{
-	  asm("nop");
-	  asm("nop");
+	while(1){
+		LCD_clear();
+		LCD_str("fisier 1",NOT_SELECTED);
+		LCD_str("fisier 2", SELECTED);
+		LCD_str("dir1",NOT_SELECTED);
+		_delay_ms(2000);
+		LCD_clear();
+		LCD_raw((const char *) splash, 6 * 84);
+		_delay_ms(2000);
 	}
 }
+#endif
 
-/*--------------------------------------------------------------------------------------------------
-  Name         :  LCD_drawBorder
-  Description  :  Draws rectangle border on the display
-  Argument(s)  :  None
-  Return value :  None
---------------------------------------------------------------------------------------------------*/
-void LCD_drawBorder (void )
+
+
+#ifdef _EXTRA_FEATURES_
+/* Set display contrast. Note: No change is visible at ambient temperature */
+void LCD_contrast(unsigned char contrast)
 {
-  unsigned char i, j;
-  for(i=0; i<7; i++)
-  {
-    LCD_gotoXY (0,i);
+	LCD_send(0x21, LCD_CMD);				// LCD Extended Commands
+    LCD_send(0x80 | contrast, LCD_CMD);		// Set LCD Vop(Contrast)
+    LCD_send(0x20, LCD_CMD);				// LCD std cmds, hori addr mode
+}
+#endif
 
-	for(j=0; j<84; j++)
-	{
-	  if(j == 0 || j == 83)
-		LCD_writeData (0xff);		// first and last column solid fill to make line
-	  else if(i == 0)
-	    LCD_writeData (0x08);		// row 0 is having only 5 bits (not 8)
-	  else if(i == 6)
-	    LCD_writeData (0x04);		// row 6 is having only 3 bits (not 8)
-	  else
-	    LCD_writeData (0x00);
-	}
-  }
-}	
-
-/*--------------------------------------------------------------------------------------------------
-                                         End of file.
---------------------------------------------------------------------------------------------------*/
 

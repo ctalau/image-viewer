@@ -36,6 +36,10 @@ struct MBR{
 #define TYPE_2 0x0b
 // offsetul campului de start al partitiei
 #define START_LBA_OFF 8
+
+/**
+  * Structura unei intrari de partitie in MBR
+  */ 
 struct partition_t{
 	BYTE boot_flag;
 	// Adresa de start a partitiei in modul CHS

@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
+#include <string.h>
 #include "dir.h"
 #include "fat.h"
 #include "hw.h"
@@ -20,7 +21,7 @@ uint8_t check( struct dirent * file){
 
 void get_dirent_name(struct dirent * file , char * name_buf ){
 	uint8_t *p = (uint8_t *) &(file -> name) ;
-	int i;
+	uint8_t i;
 	// NU suportam caractere Japoneze cu 0xE5
 
 	for(i=0; i < 8; i++){
@@ -35,9 +36,8 @@ void get_dirent_name(struct dirent * file , char * name_buf ){
 		*name_buf++ = '.';
 	}
 	// extensia
-	for(i=8; i < 11; i++){
-		*name_buf++ = *(p+i);
-	}
+	memcpy(name_buf, p+8, 3);
+	*(name_buf+3)=0;
 	return;
 }
 
@@ -90,7 +90,9 @@ void closedir( ){
 }
 
 sector_t get_sector( struct DIR * dir){
-	return 
+	if( dir -> cluster == 0)
+		dir->cluster = 2;
+	return
 		cluster_begin_lba +
 		(dir -> cluster-2) * sectors_per_cluster +
 		dir -> offset / SECTOR_SIZE;

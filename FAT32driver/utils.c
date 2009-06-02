@@ -4,40 +4,43 @@
 #include <ctype.h>
 #include <stdint.h>
 
-#ifdef TESTING
-#include <sys/types.h>
-#include <fcntl.h>
-void print_hex( void * buf, size_t size, off_t off){
-	int i,j;
+
+#ifndef _LOW_MEM_
+void print_hex( void * buf, uint32_t size, uint32_t off){
+	uint32_t i,j;
 	char * mybuf = ((char *) buf) + off;
 
 	printf("        ");
 	for( j=0; j < 16 ; j++){
-		printf("%02d ", j);
+		printf(PSTR("%2d "),(int) j);
 	}
-	printf("\n");
+	printf(PSTR("\n"));
 
 	for( i = 0; i < size ; i+=16){
-		printf("%4d:   ", i);
+		printf("%4x:   ", (int)i);
 		for( j=0; j < 16 && i+j < size ; j++){
 			uint8_t ch = *(mybuf + i + j);
-			printf("%02x ", ch);
+			if(ch >0x0f)
+				printf("%x ", ch);
+			else
+				printf("%x  ",ch);
 		}
-		
+
 		printf("  ");
 		for( j=0; j < 16 && i+j < size ; j++){
 			uint8_t ch = *(mybuf + i + j);
 			if(isprint(ch)){
 				printf("%c", (char)ch);
 			}else{
-				printf(".");
+				printf(PSTR("."));
 			}
 		}
-		printf("\n");
+		printf(PSTR("\n"));
 	}
 
 }
+#else
+void print_hex( void * buf, uint32_t size, uint32_t off){}
 #endif
-
 
 

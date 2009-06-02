@@ -19,6 +19,7 @@ void init_partition(void * read_buffer){
 	hw_read( read_buffer, MBR_LBA);
 	part =  (struct partition_t * ) &(mbr_buf -> part1);
 
+
 	for(i=0; i< 4; i++){
 		if( CHECK_PARTITION(part)){
 			partition_lba_start = part -> lba_begin;

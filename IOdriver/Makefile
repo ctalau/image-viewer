@@ -1,8 +1,8 @@
 TARGET=linux
-BIN=lcd
-HEX=lcd.hex
-OBJS=lcd.o
-CFLAGS=-Wall -g -Os -std=gnu99  -I../IOdriver/ -D__AVR_ATmega16__ -D_TEST_LCD_
+BIN=uart
+HEX=uart.hex
+OBJS=uart.o button.o
+CFLAGS=-Wall -mmcu=atmega16  -Os  -D__AVR_ATmega16__ -D_USART_TEST_
 CC=avr-gcc
 
 
@@ -21,5 +21,6 @@ $(BIN): $(OBJS)
 
 
 
+
 clean:
-	rm -Rf $(BIN) $(HEX) *.map *.o *~
+	rm -Rf $(BIN) $(HEX) *.o *~

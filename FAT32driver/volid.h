@@ -24,9 +24,7 @@ struct volid{
 	uint8_t signature[2];
 }__attribute__((packed));
 
-#ifdef TESTING
 void print_volid( void * read_buffer);
-#endif
 void initFAT32( void  * read_buffer);
 
 

@@ -1,208 +1,153 @@
-/*! \file mmc.c \brief MultiMedia and SD Flash Card Interface. */
-//*****************************************************************************
-//
-// File Name	: 'mmc.c'
-// Title		: MultiMedia and SD Flash Card Interface
-// Author		: Pascal Stang - Copyright (C) 2004
-// Created		: 2004.09.22
-// Revised		: 2006.06.12
-// Version		: 0.1
-// Target MCU	: Atmel AVR Series
-// Editor Tabs	: 4
-//
-// NOTE: This code is currently below version 1.0, and therefore is considered
-// to be lacking in some functionality or documentation, or may not be fully
-// tested.  Nonetheless, you can expect most functions to work.
-//
-// This code is distributed under the GNU Public License
-//		which can be found at http://www.gnu.org/licenses/gpl.txt
-//
-//*****************************************************************************
-
-//----- Include Files ---------------------------------------------------------
-#include <avr/io.h>			// include I/O definitions (port names, pin names, etc)
-#include <avr/interrupt.h>	// include interrupt support
-
-#include "global.h"		// include our global settings
-#include "spi.h"		// include spi bus support
-
-//#include "rprintf.h"
+#define F_CPU 16000000
+#include <util/delay.h>
+#include <stdio.h>
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <inttypes.h>
+#include <avr/iom16.h>
+#include <uart.h>
 
 #include "mmc.h"
 
-// include project-specific hardware configuration
-#include "mmcconf.h"
 
-// Global variables
 
-// Functions
+#define SECTOR_SIZE  512
+#ifdef _MMC_TEST_
+static char  sector[SECTOR_SIZE];
+#endif
 
-void mmcInit(void)
-{
-	// initialize SPI interface
-	spiInit();
-	// release chip select
-	sbi(MMC_CS_DDR, MMC_CS_PIN);
-	sbi(MMC_CS_PORT,MMC_CS_PIN);
+
+/**
+  * Initializeaza modulul de SPI
+  */
+void SPI_init(void) {
+	// Setam porturile de CLK, DataOut, ChipSelect - iesire, si DataIn - intrare
+	DDRB &= ~(1 << SPIDI);
+	DDRB |= (1 << SPICLK) | (1 << SPIDO) | (1 << SPICS);
+
+	// SPI Enable, Modul Master, CLK / 128
+	SPCR = (1 << MSTR) ;
+
 }
 
-u08 mmcReset(void)
-{
-	u08 i;
-	u08 retry;
-	u08 r1=0;
+/**
+  * Trimitem un caracter prin SPI si citim unul
+  */
+static char SPI_send(char d) {  // send character over SPI
+	char received = 0;
 
-	retry = 0;
-	do
-	{
-		// send dummy bytes with CS high before accessing
-		for(i=0;i<10;i++) spiTransferByte(0xFF);
-		// resetting card, go to SPI mode
-		r1 = mmcSendCommand(MMC_GO_IDLE_STATE, 0);
-		#ifdef MMC_DEBUG
-		rprintf("MMC_GO_IDLE_STATE: R1=0x%x\r\n", r1);
-		#endif
-		// do retry counter
-		retry++;
-		if(retry>10) return -1;
-	} while(r1 != 0x01);
+	SPI_ENABLE();
+	SPDR = d;
+	while(!(SPSR & (1<<SPIF)));
+	received = SPDR;
+	SPI_DISABLE();
+	return (received);
+}
 
-	// TODO: check card parameters for voltage compliance
-	// before issuing initialize command
+/**
+  * Trimite o comanda la MMC
+  * Formatul este urmatorul: COD_OP, ADDR, CRC
+  */
+static char MMC_command(char befF, uint32_t Addr, char befH ){
+	char ret;
+	MMC_ENABLE();
 
-	retry = 0;
-	do
-	{
-		// initializing card for operation
-		r1 = mmcSendCommand(MMC_SEND_OP_COND, 0);
-		#ifdef MMC_DEBUG
-		rprintf("MMC_SEND_OP_COND: R1=0x%x\r\n", r1);
-		#endif
-		// do retry counter
-		retry++;
-		if(retry>100) return -1;
-	} while(r1);
-		
-	// turn off CRC checking to simplify communication
-	r1 = mmcSendCommand(MMC_CRC_ON_OFF, 0);
-	#ifdef MMC_DEBUG
-	rprintf("MMC_CRC_ON_OFF: R1=0x%x\r\n", r1);
-	#endif
+	SPI_send(0xFF);
+	SPI_send(0x40 | befF);
+	SPI_send((uint8_t)( Addr >> 24));
+	SPI_send((uint8_t)( Addr >> 16));
+	SPI_send((uint8_t)( Addr >> 8 ));
+	SPI_send((uint8_t)( Addr      ));
+	SPI_send(befH);
+	SPI_send(0xFF);
+	ret = SPI_send(0xFF);
 
-	// set block length to 512 bytes
-	r1 = mmcSendCommand(MMC_SET_BLOCKLEN, 512);
-	#ifdef MMC_DEBUG
-	rprintf("MMC_SET_BLOCKLEN: R1=0x%x\r\n", r1);
-	#endif
+	MMC_DISABLE();
+	return ret;
+}
 
-	// return success
+/**
+  * Initializeaza cardul MMC
+  */
+int MMC_init(void) {
+	char i;
+
+	// Activam modul SPI al cardului trimitand 80 de cicluri de ceas caractere dummy
+	// cu chipul dezactivat
+	MMC_DISABLE();
+	for(i=0; i < 10; i++)
+		SPI_send(0xFF);
+	//PORTB &= ~(1 << SPICS);
+
+	// Trimitem comanda de GO_IDLE_STATE
+	if (MMC_command( MMC_GO_IDLE_STATE, 0, 0x95) != 1)
+		return 1;
+
+polling:
+	// Trimitem comanda de GET_OPERATIONAL_MODE
+	if (MMC_command( MMC_GET_OP_MODE,0,0xFF) !=0) goto polling;
+
 	return 0;
 }
 
-u08 mmcSendCommand(u08 cmd, u32 arg)
-{
-	u08 r1;
+/**
+  *  Citeste un sector de la cardul MMC
+  */
+void MMC_read(uint32_t addr, char * sector) {
+	int i;
+	char tmp;
+	// Citim 512 octeti
+	MMC_command( MMC_READ_SINGLE, addr ,0xFF);
 
-	// assert chip select
-	cbi(MMC_CS_PORT,MMC_CS_PIN);
-	// issue the command
-	r1 = mmcCommand(cmd, arg);
-	// release chip select
-	sbi(MMC_CS_PORT,MMC_CS_PIN);
+	MMC_ENABLE();
 
-	return r1;
-}
+	// Asteptam un 0xFE care sa anunte inceputul transmisiei
+	// ATT: typecast (char)0xFE is a must!
+	while(SPI_send(0xFF) != (char)0xFE);
 
-u08 mmcRead(u32 sector, u08* buffer)
-{
-	u08 r1;
-	u16 i;
-
-	// assert chip select
-	cbi(MMC_CS_PORT,MMC_CS_PIN);
-	// issue command
-	r1 = mmcCommand(MMC_READ_SINGLE_BLOCK, sector<<9);
-	#ifdef MMC_DEBUG
-	rprintf("MMC Read Block R1=0x%x\r\n", r1);
-	#endif
-	// check for valid response
-	if(r1 != 0x00)
-		return r1;
-	// wait for block start
-	while(spiTransferByte(0xFF) != MMC_STARTBLOCK_READ);
-	// read in data
-	for(i=0; i<0x200; i++)
-	{
-		*buffer++ = spiTransferByte(0xFF);
+	for(i=0; i < SECTOR_SIZE; i++) {
+		tmp = SPI_send(0xFF);
+		sector[i] = tmp;
 	}
-	// read 16-bit CRC
-	spiTransferByte(0xFF);
-	spiTransferByte(0xFF);
-	// release chip select
-	sbi(MMC_CS_PORT,MMC_CS_PIN);
-	// return success
-	return 0;
+
+	// Trimitem 2 dummy bytes pentru a citi CRC-ul
+	SPI_send(0xFF);
+	SPI_send(0xFF);
+	MMC_DISABLE();
 }
 
-u08 mmcWrite(u32 sector, u08* buffer)
-{
-	u08 r1;
-	u16 i;
+#ifdef _MMC_TEST_
+/**
+  *	Cod care initializeaza stiva 'by hand' la sfarsitul memoriei
+  */
+void stack_init(void) __attribute__ ((naked)) __attribute__ ((section (".init8"))); 
+void stack_init(){
+	asm("ldi r28,lo8(0x80045F)");
+	asm("ldi r29,hi8(0x80045F)");
+	asm("out __SP_H__,r29");
+	asm("out __SP_L__,r28");
+}
 
-	// assert chip select
-	cbi(MMC_CS_PORT,MMC_CS_PIN);
-	// issue command
-	r1 = mmcCommand(MMC_WRITE_BLOCK, sector<<9);
-	#ifdef MMC_DEBUG
-	rprintf("MMC Write Block R1=0x%x\r\n", r1);
-	#endif
-	// check for valid response
-	if(r1 != 0x00)
-		return r1;
-	// send dummy
-	spiTransferByte(0xFF);
-	// send data start token
-	spiTransferByte(MMC_STARTBLOCK_WRITE);
-	// write data
-	for(i=0; i<0x200; i++)
-	{
-		spiTransferByte(*buffer++);
+int main(void) {
+	uint32_t i,j;
+	uart_init();
+	SPI_init();
+	MMC_init();
+
+
+	for( i = 0; i < 1; i++){
+		printf("Primesc\r\n");
+		MMC_read(SECTOR_SIZE*i, (char *) sector);
+		for(j=0; j < SECTOR_SIZE; j++) {
+			printf("%02x ",(unsigned char )sector[j]);
+			if(j %16 == 0)
+				printf("\r\n");
+		}
+	//_delay_ms(2000);
 	}
-	// write 16-bit CRC (dummy values)
-	spiTransferByte(0xFF);
-	spiTransferByte(0xFF);
-	// read data response token
-	r1 = spiTransferByte(0xFF);
-	if( (r1&MMC_DR_MASK) != MMC_DR_ACCEPT)
-		return r1;
-	#ifdef MMC_DEBUG
-	rprintf("Data Response Token=0x%x\r\n", r1);
-	#endif
-	// wait until card not busy
-	while(!spiTransferByte(0xFF));
-	// release chip select
-	sbi(MMC_CS_PORT,MMC_CS_PIN);
-	// return success
+	printf("512 byteai received\n");
+
+	while (1);
 	return 0;
 }
-
-u08 mmcCommand(u08 cmd, u32 arg)
-{
-	u08 r1;
-	u08 retry=0;
-	// send command
-	spiTransferByte(cmd | 0x40);
-	spiTransferByte(arg>>24);
-	spiTransferByte(arg>>16);
-	spiTransferByte(arg>>8);
-	spiTransferByte(arg);
-	spiTransferByte(0x95);	// crc valid only for MMC_GO_IDLE_STATE
-	// end command
-	// wait for response
-	// if more than 8 retries, card has timed-out
-	// return the received 0xFF
-	while((r1 = spiTransferByte(0xFF)) == 0xFF)
-		if(retry++ > 8) break;
-	// return response
-	return r1;
-}
+#endif
